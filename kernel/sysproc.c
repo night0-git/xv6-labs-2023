@@ -74,7 +74,38 @@ sys_sleep(void)
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  uint64 base, mask;
+  int len;
+  int i;
+
+  argaddr(0, &base); // starting user virtual address
+  argint(1, &len);   // number of pages to check
+  argaddr(2, &mask); // user address of output bitmask buffer
+  
+  if(len < 0 || len > 32) {
+    return -1;
+  }
+
+  struct proc *p = myproc();
+  unsigned int abits = 0;
+
+  for(i = 0; i < len; i++) {
+    uint64 va = base + (uint64)i * PGSIZE;
+    if(va >= MAXVA) {
+      return -1;
+    }
+    pte_t *pte = walk(p->pagetable, va, 0);
+    if(pte != 0 && (*pte & PTE_V) && (*pte & PTE_A)) {
+      abits |= (1U << i);
+      *pte &= ~PTE_A;
+    }
+  }
+
+  // copy the result bitmask back to user buffer `mask`
+  if(copyout(p->pagetable, mask, (char *)&abits, sizeof(abits)) < 0) {
+    return -1;
+  }
+
   return 0;
 }
 #endif
