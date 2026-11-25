@@ -1,0 +1,11 @@
+4.1. System call nào khác có thể được tăng tốc bằng trang chia sẻ?
+
+Có thể tăng tốc uptime() bằng cách thêm trường ticks vào struct usyscall.
+Khi ngắt timer tăng số tick kể từ lúc khởi động, kernel ghi giá trị mới
+bằng thao tác nguyên tử vào các trang USYSCALL đang dùng. Hàm phía user
+đọc trường này bằng một lần đọc nguyên tử mà không cần vào kernel.
+
+PID riêng cho từng tiến trình, còn số tick là dữ liệu chung. Để chỉ cập
+nhật một bản sao mỗi tick, kernel có thể ánh xạ cùng một trang vật lý
+chứa ticks với quyền chỉ đọc vào mọi tiến trình và tiếp tục dùng trang
+USYSCALL riêng của từng tiến trình để chứa PID.
