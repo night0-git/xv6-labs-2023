@@ -9,3 +9,53 @@ PID riêng cho từng tiến trình, còn số tick là dữ liệu chung. Để
 nhật một bản sao mỗi tick, kernel có thể ánh xạ cùng một trang vật lý
 chứa ticks với quyền chỉ đọc vào mọi tiến trình và tiếp tục dùng trang
 USYSCALL riêng của từng tiến trình để chứa PID.
+
+4.2. Giải thích các trang lá trong kết quả vmprint() của init
+
+Trong kết quả in bảng trang của init có 7 trang lá, mỗi trang 4096 byte.
+Có thể phân biệt chúng với các bảng con bằng các bit quyền: PTE hợp lệ
+có ít nhất một trong ba bit R, W, X là PTE lá. Các nhóm " .." chỉ độ sâu
+trong cây, còn địa chỉ ảo của trang được ghép từ chỉ số ở ba cấp.
+
+Ở đây, V là bit hợp lệ, R/W/X lần lượt là quyền đọc/ghi/thực thi, còn U
+cho phép truy cập từ user mode. Các giá trị cờ bên dưới được lấy tại lúc
+init vừa được nạp, trước khi chương trình bắt đầu chạy.
+
+Trang đầu tiên, ở địa chỉ ảo 0x0, chứa mã lệnh và các hằng chỉ đọc của
+init cùng những hàm thư viện được liên kết vào chương trình. Trang này
+có các cờ V|R|X|U (0x1b), nghĩa là user có thể đọc và chạy mã ở đây,
+nhưng không được sửa nội dung trang.
+
+Trang tiếp theo ở 0x1000 là vùng dữ liệu .data và .bss, chẳng hạn mảng
+argv và các biến của bộ cấp phát bộ nhớ user. Khác với trang mã, dữ liệu
+cần được thay đổi khi chương trình chạy nên trang có V|R|W|U (0x17):
+user được đọc và ghi, nhưng không được thực thi mã trên trang này.
+
+Trang ở 0x2000 là trang bảo vệ ngay bên dưới stack. Điểm đáng chú ý là
+trang vẫn có V|R|W (0x07), nhưng không có U vì exec() đã gọi uvmclear()
+để bỏ quyền truy cập của user. Vì vậy, trang vẫn xuất hiện trong kết quả
+vmprint(), còn nếu stack tràn xuống đây thì chương trình sẽ gặp lỗi
+truy cập thay vì tiếp tục ghi xuống vùng nhớ bên dưới.
+
+Trang ở 0x3000 mới là stack mà init sử dụng để lưu tham số khởi động và
+dữ liệu khi gọi hàm. Stack tăng trưởng về phía địa chỉ thấp, hướng về
+trang bảo vệ vừa nói. Trang có V|R|W|U (0x17), cho phép user đọc và ghi,
+nhưng không cho thực thi mã trên stack.
+
+Ba trang còn lại nằm ở cuối không gian địa chỉ của tiến trình:
+
+- USYSCALL ở 0x3fffffd000 chứa struct usyscall với PID của init là 1.
+  Đây chính là nơi ugetpid() đọc PID mà không cần gọi vào kernel.
+  Trang có V|R|U (0x13), nên user chỉ được đọc, không được ghi hay
+  thực thi. Nhờ vậy, user không thể tự sửa PID do kernel cung cấp.
+
+- TRAPFRAME ở 0x3fffffe000 dùng để lưu các thanh ghi user khi xảy ra
+  trap, rồi khôi phục chúng khi quay lại chương trình. Trang có V|R|W
+  (0x07), không có U hay X. Mã trampoline chạy ở supervisor mode được
+  đọc và ghi trang này, còn user không được truy cập trực tiếp.
+
+- TRAMPOLINE ở 0x3ffffff000 chứa mã uservec và userret để chuyển giữa
+  user và kernel. Trang này được ánh xạ tới cùng một trang vật lý trong
+  cả bảng trang user lẫn kernel, giúp mã tiếp tục chạy khi đổi bảng
+  trang. Các cờ V|R|X (0x0b) cho phép supervisor đọc và thực thi nhưng
+  không ghi qua ánh xạ này. User cũng không được truy cập vì không có U.
