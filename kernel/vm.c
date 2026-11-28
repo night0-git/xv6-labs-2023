@@ -273,6 +273,33 @@ uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   return newsz;
 }
 
+// Print valid entries in a page table, descending only into non-leaf PTEs.
+static void
+vmprintwalk(pagetable_t pagetable, int depth)
+{
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) == 0)
+      continue;
+
+    uint64 pa = PTE2PA(pte);
+    for(int j = 0; j < depth; j++)
+      printf(" ..");
+    printf("%d: pte %p pa %p\n", i, pte, pa);
+
+    if((pte & (PTE_R|PTE_W|PTE_X)) == 0)
+      vmprintwalk((pagetable_t)pa, depth + 1);
+  }
+}
+
+// Print the page-table tree without modifying its entries.
+void
+vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n", (uint64)pagetable);
+  vmprintwalk(pagetable, 1);
+}
+
 // Recursively free page-table pages.
 // All leaf mappings must already have been removed.
 void
